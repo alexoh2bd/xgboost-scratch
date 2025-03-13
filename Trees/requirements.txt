@@ -11,4 +11,5 @@ pandas
 numpy
 scikit-learn
 requests
+xgboost
 -e .
