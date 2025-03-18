@@ -181,8 +181,10 @@ class Tree:
             currnode.prob = self.probs[i]
             print(f"{'  '*depth}LEAF! Bounds: {i} - {j}.")
             print(f"{'  '*depth}  Output: {currnode.output}. Log(Odds): {logodd}.")
-            print(f"{'  '*depth}  Raw Score: {score}. Probs: {self.probs[i:i+10]}.")
+            print(f"{'  '*depth}  Raw Score: {score}. Prediction: {self.probs[i]}.\n")
             return
+        else:
+            print("\n")
         if currnode.leftNode:
             self.updateProbs(currnode.leftNode, depth + 1)
         if currnode.rightNode:

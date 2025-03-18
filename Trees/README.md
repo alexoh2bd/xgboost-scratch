@@ -6,6 +6,14 @@
 
 Building multiple types of gradient-boosted trees from scratch on simple datasets for classification and regression
 
+## Setup
+
+Download mock [Spaceship Titanic Data](https://www.kaggle.com/competitions/spaceship-titanic/data), and move train.csv and test.csv files to "Trees/data/raw/" directory:
+
+run dataset.py in terminal to process data
+then run xgboost.py to build xgboost model
+
+
 ## Project Organization
 
 ```

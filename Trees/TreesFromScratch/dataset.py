@@ -1,6 +1,7 @@
 from pathlib import Path
 import requests
 import typer
+import pandas as pd
 from loguru import logger
 from tqdm import tqdm
 import os
@@ -12,52 +13,45 @@ app = typer.Typer()
 import base64
 
 
+# normalization and binary encode in place
+def normalize(df, feature: str) -> None:
+    maxVal = df[feature].max()
+    df[feature] = df[feature].apply(lambda x: x / maxVal)
+
+
+def binaryEncode(df, feature: str) -> None:
+    df[feature] = df[feature].apply(lambda x: 1 if x == True else 0)
+
+
+def processSpaceshipData(input_path: str, output_path: str):
+    normFeatures = ["Age", "RoomService", "FoodCourt", "ShoppingMall", "Spa", "VRDeck"]
+    binaryFeats = ["CryoSleep", "VIP"]
+    transp = "Transported"
+    df = pd.read_csv(input_path)
+
+    for f in normFeatures:
+        normalize(df, f)
+    for f in binaryFeats:
+        binaryEncode(df, f)
+    if transp in df:
+        binaryEncode(df, transp)
+
+    df.drop(columns=["Name", "PassengerId", "Cabin"], inplace=True)
+    df.to_csv(output_path, index=False)
+
 
 @app.command()
 def main(
-    input_path: Path = RAW_DATA_DIR / "train.csv",
-    output_path: Path = PROCESSED_DATA_DIR / "train.csv",
+    input_train_path: Path = RAW_DATA_DIR / "train.csv",
+    input_test_path: Path = RAW_DATA_DIR / "test.csv",
+    output_train_path: Path = PROCESSED_DATA_DIR / "train.csv",
+    output_test_path: Path = PROCESSED_DATA_DIR / "test.csv",
 ):
     logger.info("Processing train.csv dataset...")
-
-    # 
-
-
-
-
-
-    # f=open(output_path, 'wb')
-    # for chunk in r.iter_content(chunk_size = 512 * 1024):
-    #     if chunk:
-    #         f.write(chunk)
-
+    # processSpaceshipData(input_train_path, output_train_path)
+    processSpaceshipData(input_test_path, output_test_path)
     logger.success("Processing dataset complete.")
-
-    
 
 
 if __name__ == "__main__":
     app()
-
-
-# base_url = "https://www.kaggle.com/c"
-# owner_slug = "kaggle"
-# dataset_slug = "spaceship-titanic"
-# dataset_version = "1"
-# data_url = url = f"{base_url}/{dataset_slug}/download/train.csv"
-
-# dest_path = '../data/raw/dataset.csv'
-# kaggle_info = {'UserName': os.getenv('kaggleuser'), 'Password': os.getenv('kagglepwd'), 'key': os.getenv('key')}
-
-# creds = base64.b64encode(bytes(f"{kaggle_info['UserName']}:{kaggle_info['Password']}", "ISO-8859-1")).decode("ascii")
-# headers = {
-# "Authorization": f"Basic {creds}"
-# }
-
-# r = requests.get(data_url, headers=headers)
-# assert(r.status_code == 200)
-
-# f=open(dest_path, 'wb')
-# for chunk in r.iter_content(chunk_size = 512 * 1024):
-#     if chunk:
-#         f.write(chunk)
