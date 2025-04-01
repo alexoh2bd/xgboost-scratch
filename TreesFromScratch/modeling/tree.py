@@ -13,7 +13,7 @@ from matplotlib.collections import LineCollection
 
 class Node:
 
-    def __init__(self, feature: str, idx0, idx1):
+    def __init__(self):
         """
         Creates new Node instance
 
@@ -27,15 +27,16 @@ class Node:
         idx1: int
             upper bound for item index range
         """
-        self.feature = feature
-        self.idx0 = idx0
-        self.idx1 = idx1
+        self.feature = "feature"
         self.split = None  # split index in data
         self.isLeaf = False  # by default is a node
         self.thresh = None  # If not leaf, threshold
         self.leftNode = None
         self.rightNode = None
         self.prob = None
+        self.hessians = None
+        self.residuals = None
+        self.X_indices = []
         self.output = None
 
 
@@ -48,13 +49,23 @@ class Tree:
     """
 
     def __init__(
-        self, probs: list, x: list, y: list, maxDepth=5, min_child_weight=1, lam=1, gamma=1, lr=0.3
+        self,
+        features: list,
+        probs: list,
+        X: list,
+        y: list,
+        maxDepth=3,
+        min_child_weight=200,
+        lam=1,
+        gamma=1,
+        lr=0.3,
     ):
         """
         Parameters
         ----------
+        features: list of features
         probs: Probabilities (predictions) for y
-        x: feature class
+        X: predictors matrix (pandas dataframe )
         y: actual y predicted class
         rootNode: Tree's root node
         maxDepth: maximum depth of tree
@@ -63,14 +74,15 @@ class Tree:
         gamma: Gamma Regularization Constant for minimizing split loss
         lr: learning rate
 
+
         Local Variables
         ---------------
         residuals: negative gaussians, difference between actual y and predicted y (probability of y)
         hessians: calculated from probs
         len: dataset length
         """
-
-        self.x = x
+        self.features = features
+        self.X = X
         self.y = y
         self.rootNode = None
         self.maxDepth = maxDepth
@@ -78,7 +90,12 @@ class Tree:
         self.lam = lam
         self.gamma = gamma
         self.lr = lr
+        self.num_feats = len(self.features)
         self.len = len(self.y)
+
+        # Sorted X and X indices
+        self.X_sorted = {}
+        self.X_indices = {}
 
         # calculate residuals(gaussians) and hessians from probs upon init
         self.probs = probs
@@ -90,33 +107,64 @@ class Tree:
         assert ((hessSum) + self.lam) != 0
         return ((resSum) ** 2) / ((hessSum) + self.lam)
 
+    # Sort each feature in X and place initial indices
+    def sort_X(self, indices):
+        X = self.X.loc[indices]
+        if "index" not in X.columns:
+            pd.options.mode.copy_on_write = True
+            X["index"] = X.index
+
+        X_sorted, X_indices = {}, {}
+
+        for feature in self.X.columns:
+            copy = X.sort_values(by=feature)
+            X_sorted[feature] = copy[feature]
+            X_indices[feature] = copy["index"]
+        X.reset_index()
+        return X_sorted, X_indices
+
+    # Set Residuals and Hessians for each feature according to the new order
+    def calcResHess(self, indices):
+        """
+        indices: sorted indices used to mask self.y and self.probs
+        """
+        y = np.array(self.y)[indices]
+        probs = np.array(self.probs)[indices]
+        residuals = list(map(lambda x, z: x - z, y, probs))
+        hessians = list(map(lambda x: x * (1 - x), probs))
+        return residuals, hessians
+
     # Find Split Index which maximizing Gain
-    def findSplit(self, idx0: int, idx1: int):
+    def findSplit(self, res: list, hess: list):
         """
         Parameters
         ---------
-        idx0: left bound
-        idx1: right bound
+        feature: str
+        idx0: list of left bounds num_features
+        idx1: list of right bounds
 
         Sum the gausssians and hessians once at the beginning, sliding window
         """
-        assert idx0 < idx1 and isinstance(idx0, int) and isinstance(idx1, int)
-        lRSum = sum(self.residuals[idx0 : idx0 + self.min_child_weight])
-        lHSum = sum(self.residuals[idx0 : idx0 + self.min_child_weight])
-        rRSum = sum(self.residuals[idx0 + self.min_child_weight : idx1])
-        rHSum = sum(self.hessians[idx0 + self.min_child_weight : idx1])
+
+        total_residuals = sum(res)
+        total_hessians = sum(hess)
+        lRSum = sum(res[: self.min_child_weight])
+        lHSum = sum(res[: self.min_child_weight])
+        rRSum = total_residuals - lRSum
+        rHSum = total_hessians - lHSum
 
         maxGain = 0
         tempGain = 0
         rootSim = self.simScore(rRSum, rHSum)
-        splitIdx = idx0 + 1
+        splitIdx = self.min_child_weight
+        idxrange = len(res)
 
         # Iterate through Residuals and Hessians to calc Similarity Score and find max Gain
-        for i in range(idx0 + self.min_child_weight, idx1 - self.min_child_weight):
-            lRSum += self.residuals[i]
-            lHSum += self.hessians[i]
-            rRSum -= self.residuals[i]
-            rHSum -= self.hessians[i]
+        for i in range(self.min_child_weight, idxrange - self.min_child_weight):
+            lRSum += res[i]
+            lHSum += hess[i]
+            rRSum -= res[i]
+            rHSum -= hess[i]
             if lHSum + self.lam == 0 or rHSum + self.lam == 0:
                 continue
 
@@ -125,48 +173,87 @@ class Tree:
 
             tempGain = rSim + lSim - rootSim
 
-            # check maxgain and prune if gain - gamma < 0
+            # check maxgain and prune/leave out if gain - gamma < 0
             if tempGain > maxGain and tempGain - self.gamma > 0:
                 maxGain = tempGain
                 splitIdx = i
-        return splitIdx
+        return splitIdx, maxGain
 
     # Values are 0 or 1, predictions are 0-1 probabilities
-    def buildBranch(self, node: Node, idx0: int, idx1: int, currdepth: int):
-        """ """
+    def buildBranch(self, node: Node, idx: list, currdepth: int, prevNode=None):
+        """
+        Inputs
+        -------
+        node: Base Node to build branch off of
+        idx: List of remaining row indices. With each iteration, divide/filter out indices depending on gain and split
+        currdepth: Current depth of the tree
+        """
 
-        # If we reach max depth or cover < minimum allowed (prune), turn into a leaf
-        assert idx0 < idx1
+        splitFeat, bestSplit, maxGains = 0, 0, 0
+        foundSplit = False
+        residuals, hessians = self.calcResHess(idx)
 
-        cover = sum(self.hessians[idx0:idx1]) - self.lam
-        denom = sum(self.hessians[idx0:idx1]) + self.lam
-        assert denom != 0
-        if cover <= self.min_child_weight or currdepth >= self.maxDepth:
+        X_sorted, X_indices = self.sort_X(idx)
+
+        if currdepth >= self.maxDepth:
             node.isLeaf = True
-            node.output = sum(self.residuals[idx0:idx1]) / denom
+            node.output = sum(residuals) / (sum(hessians) + self.lam)
             return
 
-        split = self.findSplit(idx0, idx1)
+        for feature in self.features:
+            # Sort feature indices in terms of sorted X_indices
+            res = list(map(lambda i: self.residuals[i], X_indices[feature]))
+            hess = list(map(lambda i: self.hessians[i], X_indices[feature]))
 
-        thresh = (self.x[split] + self.x[(split + 1)]) / 2
-        node.thresh = thresh
+            cover = sum(hess) - self.lam
 
-        node.leftNode = Node(node.feature, idx0, split)
-        node.rightNode = Node(node.feature, split, idx1)
+            # If we reach max depth or cover < minimum allowed (prune)continue
+            if cover <= self.min_child_weight:
+                continue
+
+            # select the feature and split with the maximum gain
+            split, gain = self.findSplit(res, hess)
+            if gain > maxGains:
+                splitFeat = feature
+                bestSplit = X_indices[feature].index[split]
+                # bestSplit = split
+                maxGains = gain
+                foundSplit = True
+
+        # edge case, turn into a leaf, store output
+        if not foundSplit:
+            node.isLeaf = True
+            node.output = sum(res) / (sum(hess) + self.lam)
+            return
+
+        node.thresh = X_sorted[splitFeat][bestSplit]
+        node.feature = splitFeat
+        node.prob = self.probs[bestSplit]
+        if prevNode and node.thresh == prevNode.thresh and node.feature == prevNode.feature:
+            return
 
         print(
-            f"{'  ' * currdepth}Splitting at indices ({idx0}, {split}, {idx1}), threshold {thresh}, cover {cover}, and probability {self.probs[split]}"
+            f"{'   ' * currdepth}{currdepth}: Splitting on Feature {splitFeat}\n",
+            f"{'   ' * currdepth}Indices ({bestSplit})\n",
+            f"{'   ' * currdepth}Threshold {node.thresh} and probability {self.probs[bestSplit]}",
         )
 
-        self.buildBranch(node.leftNode, idx0, split, currdepth + 1)
-        self.buildBranch(node.rightNode, split, idx1, currdepth + 1)
+        # updates index arrays, and initiate new nodes
+        node.leftNode = Node()
+        node.rightNode = Node()
 
+        idx0 = sorted(X_indices[splitFeat][:bestSplit])
+        idx1 = sorted(X_indices[splitFeat][bestSplit:])
+
+        self.buildBranch(node.leftNode, idx0, currdepth + 1, node)
+        self.buildBranch(node.rightNode, idx1, currdepth + 1, node)
+
+    '''
     # Recurse down to each leaf, calculate new output value, then update all probs
     def updateProbs(self, currnode: Node, depth: int):
         print(f"{'  '*depth}Node Depth: {depth}. Threshold: {currnode.thresh} ")
         if currnode.isLeaf and currnode.leftNode is None and currnode.rightNode is None:
-            i, j = currnode.idx0, currnode.idx1
-
+            """i, j = currnode.idx0, currnode.idx1"""
             # lambda L2(Lasso) Regulation in denominator
             denom = sum(self.hessians[i:j]) + self.lam
             currnode.output = sum(self.residuals[i:j]) / denom
@@ -174,33 +261,45 @@ class Tree:
             score = logodd + self.lr * currnode.output  # Log(odds) prediction
 
             # recalculate probs, residuals, hessians
-            self.probs[i:j] = [e**score / (1 + e**score) for _ in range(i, j)]
-            self.residuals[i:j] = [(self.y[k] - self.probs[k]) for k in range(i, j)]
-            self.hessians[i:j] = [(self.probs[k] * (1 - self.probs[k])) for k in range(i, j)]
+            self.probs[i:j] = list(e**score / (1 + e**score) for _ in range(i, j))
+            self.residuals[i:j] = list((self.y[k] - self.probs[k]) for k in range(i, j))
+            self.hessians[i:j] = list((self.probs[k] * (1 - self.probs[k])) for k in range(i, j))
 
             currnode.prob = self.probs[i]
-            print(f"{'  '*depth}LEAF! Bounds: {i} - {j}.")
-            print(f"{'  '*depth}  Output: {currnode.output}. Log(Odds): {logodd}.")
-            print(f"{'  '*depth}  Raw Score: {score}. Prediction: {self.probs[i]}.\n")
+            print(
+                f"{'  '*depth}LEAF! Bounds: {i} - {j}.\n",
+                f"{'  '*depth}  Output: {currnode.output}. \n",
+                f"{'  '*depth}  Log(Odds): {logodd}.\n",
+                f"{'  '*depth}  Raw Score: {score}.\n",
+                f"{'  '*depth}  Prediction: {self.probs[i]}.\n-------------------------------------------",
+            )
             return
-        else:
-            print("\n")
         if currnode.leftNode:
             self.updateProbs(currnode.leftNode, depth + 1)
         if currnode.rightNode:
             self.updateProbs(currnode.rightNode, depth + 1)
+    '''
 
-    def buildTree(self, feature: str):
+    def buildTree(self):
         """
         Build new tree for each iteration, update probabilities(predictions) after each tree
 
         Declare Root
+        Calculate Residuals and Hessians for each feature
         Build Branch from root
         Then update probabilities
         """
-        self.rootNode = Node(feature, 0, self.len)
-        self.buildBranch(self.rootNode, idx0=0, idx1=self.len, currdepth=0)
-        self.updateProbs(currnode=self.rootNode, depth=0)
+        indices = list(self.X.index)
+        _, _ = self.sort_X(indices)
+        self.rootNode = Node()
+        # self.setResidualsHessians()
+        # set index dictionaries
+        self.buildBranch(
+            self.rootNode,
+            idx=indices,
+            currdepth=0,
+        )
+        # self.updateProbs(currnode=self.rootNode, depth=0)
 
     def extractThresh(self):
         """
@@ -241,7 +340,7 @@ class Tree:
 
         thresholds = np.ravel(thresholds)
         thresholds.sort()
-        print(f"thresholds: {thresholds}.  probs:{probs}.")
+        print(f"Thresholds: {thresholds}.  Predictions:{probs}.")
         for b in thresholds:
             ax.axvline(x=b, color="r", linestyle="-", linewidth=1)
         for i in range(len(probs)):

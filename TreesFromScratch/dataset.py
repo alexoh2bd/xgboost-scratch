@@ -16,7 +16,8 @@ import base64
 # normalization and binary encode in place
 def normalize(df, feature: str) -> None:
     maxVal = df[feature].max()
-    df[feature] = df[feature].apply(lambda x: x / maxVal)
+    minVal = df[feature].min()
+    df[feature] = df[feature].apply(lambda x: (x - minVal) / (maxVal - minVal))
 
 
 def binaryEncode(df, feature: str) -> None:

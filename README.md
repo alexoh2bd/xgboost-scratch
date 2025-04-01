@@ -8,6 +8,14 @@ Building multiple types of gradient-boosted trees from scratch on simple dataset
 
 ## Setup
 
+Set up Python
+
+python -m venv venv
+source ./venv/bin/activate
+pip install -r requirements
+
+
+
 Download mock [Spaceship Titanic Data](https://www.kaggle.com/competitions/spaceship-titanic/data), and move train.csv and test.csv files to "Trees/data/raw/" directory:
 
 run dataset.py in terminal to process data

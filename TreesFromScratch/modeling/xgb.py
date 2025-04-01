@@ -62,12 +62,13 @@ class XGBoostModel:
         """
         Fit multiple
         """
-        for i in range(self.num_estimators):
-            predictions = [0.5 for i in range(len(X[i]))]
+        for i in range(1):
+            predictions = [0.5 for i in range(X.shape[0])]
             self.trees.append(
                 Tree(
+                    features,
                     predictions,
-                    X[i],
+                    X,
                     y,
                     maxDepth=self.max_depth,
                     min_child_weight=self.min_child_weight,
@@ -75,7 +76,8 @@ class XGBoostModel:
                     lam=self.reg_lambda,
                 )
             )
-            self.trees[i].buildTree(self.features[i])
+            self.trees[i].buildTree()
+            # print(X.columns)
 
 
 app = typer.Typer()
@@ -88,25 +90,22 @@ def main(
     train_path: Path = PROCESSED_DATA_DIR / "train.csv",
     model_path: Path = MODELS_DIR / "model.pkl",
 ):
-
     df = pd.read_csv(train_path)
-    df.sort_values(by="Age", inplace=True)
-    transported = df["Transported"]
-    y = [0 if T else 1 for T in transported]
-    age = df["Age"].to_list()
 
-    X = [age]
-    features = ["Age"]
+    y = [0 if T else 1 for T in df["Transported"]]
+
+    features = ["Age", "CryoSleep", "VIP"]
+
     model = XGBoostModel(
         features=features,
         num_estimators=1,
-        max_depth=5,
+        max_depth=10,
         min_child_weight=200,
         reg_alpha=0.3,
         reg_lambda=10,
         reg_gamma=10,
     )
-    model.fit(X, y, features)
+    model.fit(df[features], y, features)
 
 
 if __name__ == "__main__":
