@@ -179,6 +179,12 @@ class Tree:
                 splitIdx = i
         return splitIdx, maxGain
 
+    def makeLeaf(self, node, residuals, hessians, idx):
+        node.isLeaf = True
+        node.output = sum(residuals) / (sum(hessians) + self.lam)
+        node.residuals, node.hessians, node.X_indices = residuals, hessians, idx
+        node.leftNode, node.rightNode = None, None
+
     # Values are 0 or 1, predictions are 0-1 probabilities
     def buildBranch(self, node: Node, idx: list, currdepth: int, prevNode=None):
         """
@@ -192,16 +198,14 @@ class Tree:
         splitFeat, bestSplit, maxGains = 0, 0, 0
         foundSplit = False
         residuals, hessians = self.calcResHess(idx)
+        if currdepth >= self.maxDepth:
+            self.makeLeaf(node, residuals, hessians, idx)
+            return
 
         X_sorted, X_indices = self.sort_X(idx)
 
-        if currdepth >= self.maxDepth:
-            node.isLeaf = True
-            node.output = sum(residuals) / (sum(hessians) + self.lam)
-            return
-
         for feature in self.features:
-            # Sort feature indices in terms of sorted X_indices
+            # Sort indices in terms of sorted X_indices
             res = list(map(lambda i: self.residuals[i], X_indices[feature]))
             hess = list(map(lambda i: self.hessians[i], X_indices[feature]))
 
@@ -216,25 +220,28 @@ class Tree:
             if gain > maxGains:
                 splitFeat = feature
                 bestSplit = X_indices[feature].index[split]
-                # bestSplit = split
                 maxGains = gain
+                node.residuals = res
+                node.hessians = hess
                 foundSplit = True
 
-        # edge case, turn into a leaf, store output
+        # base case, turn into a leaf, store output
         if not foundSplit:
-            node.isLeaf = True
-            node.output = sum(res) / (sum(hess) + self.lam)
+            self.makeLeaf(node, residuals, hessians, idx)
             return
 
         node.thresh = X_sorted[splitFeat][bestSplit]
         node.feature = splitFeat
         node.prob = self.probs[bestSplit]
+        node.X_indices = X_indices[splitFeat]
+
         if prevNode and node.thresh == prevNode.thresh and node.feature == prevNode.feature:
+            self.makeLeaf(node, residuals, hessians, idx)
             return
 
         print(
             f"{'   ' * currdepth}{currdepth}: Splitting on Feature {splitFeat}\n",
-            f"{'   ' * currdepth}Indices ({bestSplit})\n",
+            f"{'   ' * currdepth} Best Split ({bestSplit}), span {len(X_indices[splitFeat])}\n",
             f"{'   ' * currdepth}Threshold {node.thresh} and probability {self.probs[bestSplit]}",
         )
 
@@ -248,37 +255,74 @@ class Tree:
         self.buildBranch(node.leftNode, idx0, currdepth + 1, node)
         self.buildBranch(node.rightNode, idx1, currdepth + 1, node)
 
-    '''
     # Recurse down to each leaf, calculate new output value, then update all probs
     def updateProbs(self, currnode: Node, depth: int):
-        print(f"{'  '*depth}Node Depth: {depth}. Threshold: {currnode.thresh} ")
+        print(
+            f"{'  '*depth}Node Depth: {depth}. Feature: {currnode.feature}. Threshold: {currnode.thresh}\n "
+        )
+
         if currnode.isLeaf and currnode.leftNode is None and currnode.rightNode is None:
-            """i, j = currnode.idx0, currnode.idx1"""
             # lambda L2(Lasso) Regulation in denominator
-            denom = sum(self.hessians[i:j]) + self.lam
-            currnode.output = sum(self.residuals[i:j]) / denom
-            logodd = log(self.probs[i] / (1 - self.probs[i]))
-            score = logodd + self.lr * currnode.output  # Log(odds) prediction
+            indices = currnode.X_indices
+            assert len(indices) > 0
+
+            denom = sum(np.array(self.hessians)[indices]) + self.lam
+            currnode.output = sum(np.array(self.residuals)[indices]) / denom
+
+            probsum = 0
 
             # recalculate probs, residuals, hessians
-            self.probs[i:j] = list(e**score / (1 + e**score) for _ in range(i, j))
-            self.residuals[i:j] = list((self.y[k] - self.probs[k]) for k in range(i, j))
-            self.hessians[i:j] = list((self.probs[k] * (1 - self.probs[k])) for k in range(i, j))
+            for idx in indices:
+                logodd = log(self.probs[idx] / (1 - self.probs[idx]))
+                score = logodd + self.lr * currnode.output
+                self.probs[idx] = e**score / (1 + e**score)
+                self.residuals[idx] = self.y[idx] - self.probs[idx]
+                self.hessians[idx] = self.probs[idx] * (1 - self.probs[idx])
 
-            currnode.prob = self.probs[i]
+                probsum += self.probs[idx]
+            currnode.prob = probsum / (len(indices))
+
             print(
-                f"{'  '*depth}LEAF! Bounds: {i} - {j}.\n",
+                f"{'  '*depth}LEAF!.\n",
                 f"{'  '*depth}  Output: {currnode.output}. \n",
                 f"{'  '*depth}  Log(Odds): {logodd}.\n",
                 f"{'  '*depth}  Raw Score: {score}.\n",
-                f"{'  '*depth}  Prediction: {self.probs[i]}.\n-------------------------------------------",
+                f"{'  '*depth}  Prediction: {currnode.prob}.\n-------------------------------------------",
             )
             return
+
         if currnode.leftNode:
             self.updateProbs(currnode.leftNode, depth + 1)
         if currnode.rightNode:
             self.updateProbs(currnode.rightNode, depth + 1)
-    '''
+
+    # Recurse to leaf lvl
+    # If one of branches has no points, prune
+    # If one of branches gain - gamma < 0, prune
+    def prune(self, node: Node):
+        if not node.leftNode and not node.rightNode:
+            return
+        if (node.leftNode and not node.rightNode) or (len(node.rightNode.X_indices) == 0):
+            self.makeLeaf(
+                node, node.leftNode.residuals, node.leftNode.hessians, node.leftNode.X_indices
+            )
+            return
+        if (node.rightNode and not node.leftNode) or (len(node.leftNode.X_indices) == 0):
+            self.makeLeaf(
+                node, node.rightNode.residuals, node.rightNode.hessians, node.rightNode.X_indices
+            )
+            return
+        self.prune(node.leftNode)
+        self.prune(node.rightNode)
+
+    # Recurse to leaf lvl with your features
+    # Deterministic at Leaf level
+    def predict(self, node: Node, x: pd.Series) -> int:
+        if node.isLeaf:
+            return 1 if node.prob >= 0.5 else 0
+        if node.thresh > x[node.feature]:
+            return self.predict(node.rightNode, x)
+        return self.predict(node.leftNode, x)
 
     def buildTree(self):
         """
@@ -288,18 +332,22 @@ class Tree:
         Calculate Residuals and Hessians for each feature
         Build Branch from root
         Then update probabilities
+
+        Create new tree, retain probabilities, residuals, and hessians for each index
         """
-        indices = list(self.X.index)
-        _, _ = self.sort_X(indices)
-        self.rootNode = Node()
-        # self.setResidualsHessians()
-        # set index dictionaries
-        self.buildBranch(
-            self.rootNode,
-            idx=indices,
-            currdepth=0,
-        )
-        # self.updateProbs(currnode=self.rootNode, depth=0)
+        for _ in range(3):
+            indices = list(self.X.index)
+            _, _ = self.sort_X(indices)
+            self.rootNode = Node()
+            # self.setResidualsHessians()
+            # set index dictionaries
+            self.buildBranch(
+                self.rootNode,
+                idx=indices,
+                currdepth=0,
+            )
+            self.prune(self.rootNode)
+            self.updateProbs(currnode=self.rootNode, depth=0)
 
     def extractThresh(self):
         """

@@ -62,14 +62,15 @@ class XGBoostModel:
         """
         Fit multiple
         """
+        predictions = [0.5 for i in range(X.shape[0])]
+
         for i in range(1):
-            predictions = [0.5 for i in range(X.shape[0])]
             self.trees.append(
                 Tree(
-                    features,
-                    predictions,
-                    X,
-                    y,
+                    features=features,
+                    probs=predictions,
+                    X=X,
+                    y=y,
                     maxDepth=self.max_depth,
                     min_child_weight=self.min_child_weight,
                     gamma=self.reg_gamma,
@@ -77,7 +78,7 @@ class XGBoostModel:
                 )
             )
             self.trees[i].buildTree()
-            # print(X.columns)
+            # predictions = self.trees[i].probs
 
 
 app = typer.Typer()
@@ -99,7 +100,7 @@ def main(
     model = XGBoostModel(
         features=features,
         num_estimators=1,
-        max_depth=10,
+        max_depth=4,
         min_child_weight=200,
         reg_alpha=0.3,
         reg_lambda=10,
