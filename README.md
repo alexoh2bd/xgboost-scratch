@@ -4,7 +4,9 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-Building multiple types of gradient-boosted trees from scratch on simple datasets for classification and regression
+Tree models like XGBoost are bread and butter for data scientists: they power many of the most accurate and scalable solutions in real-world machine learning tasks. By building XGBoost from scratch, I can better fine-tune performance, interpret results more effectively, and build robust systems for high-impact applications.
+
+I built all tree construction components manually, including the calculation of residuals and second-order gradients (hessians), gain scoring, and the identification of optimal feature splits. I designed the model to support binary classification tasks, implementing techniques such as regularized loss minimization and greedy tree growth with depth control. I then trained and evaluated the custom model on Kaggle’s Spaceship Titanic dataset to validate its performance against a real-world classification problem. This project deepened my understanding of gradient boosting mechanics, optimization strategies, and the inner workings of scalable ML systems.
 
 ## Setup
 
