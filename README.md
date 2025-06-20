@@ -4,9 +4,13 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-Tree models like XGBoost are bread and butter for data scientists: they power many of the most accurate and scalable solutions in real-world machine learning tasks. By building XGBoost from scratch, I can better fine-tune performance, interpret results more effectively, and build robust systems for high-impact applications.
+**XGBoost** is a foundational tool for data scientists, driving some of the most _accurate_ and _scalable_ machine learning solutions across diverse industries. Its tree-based approach delivers efficient, interpretable, and high-performing models, especially suited for _structured_, _tabular_ datasets.
 
-I built all tree construction components manually, including the calculation of residuals and second-order gradients (hessians), gain scoring, and the identification of optimal feature splits. I designed the model to support binary classification tasks, implementing techniques such as regularized loss minimization and greedy tree growth with depth control. I then trained and evaluated the custom model on Kaggle’s Spaceship Titanic dataset to validate its performance against a real-world classification problem. This project deepened my understanding of gradient boosting mechanics, optimization strategies, and the inner workings of scalable ML systems.
+By building XGBoost from scratch, I deepen my understanding of the model and similar algorithms, enabling me to fine-tune performance, interpret results more clearly, and develop robust solutions for real-world challenges.
+
+I built all tree construction components manually, including the calculation of residuals and second-order gradients (hessians), gain scoring, and the identification of optimal feature splits. I designed the model to support binary classification tasks, implementing techniques such as regularized loss minimization and greedy tree growth with depth control. This implementation also considers missing values in the datasets and draws splits accordingly.
+
+I trained and evaluated the custom model on Kaggle’s Spaceship Titanic dataset to validate its performance against a real-world classification problem. This project deepened my understanding of gradient boosting mechanics, optimization strategies, and the inner workings of scalable ML systems.
 
 ## Setup
 
