@@ -2,20 +2,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from math import e, log
 
 import typer
-from loguru import logger
 from tqdm import tqdm
 
-from TreesFromScratch.config import MODELS_DIR, PROCESSED_DATA_DIR
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
-from sklearn.datasets import make_regression
+from TreesFromScratch.config import PROCESSED_DATA_DIR
+
 
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 from tree import Tree
 
 
@@ -60,25 +54,62 @@ class XGBoostModel:
 
     def fit(self, X, y, features: str):
         """
-        Fit multiple
+        Fit multiple Trees to the
         """
         predictions = [0.5 for i in range(X.shape[0])]
 
-        for i in range(1):
-            self.trees.append(
-                Tree(
-                    features=features,
-                    probs=predictions,
-                    X=X,
-                    y=y,
-                    maxDepth=self.max_depth,
-                    min_child_weight=self.min_child_weight,
-                    gamma=self.reg_gamma,
-                    lam=self.reg_lambda,
-                )
+        for i in tqdm(range(self.num_estimators)):
+            tree = Tree(
+                features=features,
+                probs=predictions,
+                X=X,
+                y=y,
+                maxDepth=self.max_depth,
+                min_child_weight=self.min_child_weight,
+                gamma=self.reg_gamma,
+                lam=self.reg_lambda,
             )
-            self.trees[i].buildTree()
-            # predictions = self.trees[i].probs
+
+            tree.buildTree()
+
+            self.trees.append(tree)
+            for j in range(len(predictions)):
+                predictions[j] += tree.probs[j] * self.learning_rate
+
+    def predict(self, x):
+        def predictTree(t, x):
+            currnode = t.rootNode
+            while not currnode.isLeaf:
+                feature = currnode.feature
+                if pd.isna(x[feature]):
+                    if currnode.missing_direction == "left":
+                        currnode = currnode.leftNode
+                    else:
+                        currnode = currnode.rightNode
+                else:
+                    if x[feature] <= currnode.thresh:
+                        currnode = currnode.leftNode
+                    else:
+                        currnode = currnode.rightNode
+            return currnode.output
+
+        predictions = 0
+        for tree in self.trees:
+            tree_output = predictTree(tree, x)
+            predictions += self.learning_rate * tree_output
+
+        return 1 if predictions >= 0.5 else 0
+
+
+def accuracy(y_true, y_pred):
+    return np.count_nonzero(y_pred == y_true) / len(y_true)
+
+
+def precision(y_true, y_pred):
+    length = len(y_pred)
+    return sum([1 if (y_true[i] == y_pred[i] == 1) else 0 for i in range(length)]) / sum(
+        [1 if y_pred[i] == 1 else 0 for i in range(length)]
+    )
 
 
 app = typer.Typer()
@@ -86,27 +117,51 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    features_path: Path = PROCESSED_DATA_DIR / "features.csv",
-    labels_path: Path = PROCESSED_DATA_DIR / "labels.csv",
     train_path: Path = PROCESSED_DATA_DIR / "train.csv",
-    model_path: Path = MODELS_DIR / "model.pkl",
+    test_path: Path = PROCESSED_DATA_DIR / "test.csv",
 ):
-    df = pd.read_csv(train_path)
+    pd.set_option("mode.use_inf_as_na", True)
 
-    y = [0 if T else 1 for T in df["Transported"]]
+    train = pd.read_csv(train_path)
+    test = pd.read_csv(test_path)
 
-    features = ["Age", "CryoSleep", "VIP"]
+    y = pd.DataFrame([0 if T else 1 for T in train["Transported"]])
+
+    features = [
+        "Age",
+        "CryoSleep",
+        "VIP",
+        "RoomService",
+        "FoodCourt",
+        "ShoppingMall",
+        "Spa",
+        "VRDeck",
+        "HomePlanet_Earth",
+        "HomePlanet_Europa",
+        "HomePlanet_Mars",
+        "Destination_55 Cancri e",
+        "Destination_PSO J318.5-22",
+        "Destination_TRAPPIST-1e",
+    ]
 
     model = XGBoostModel(
         features=features,
-        num_estimators=1,
-        max_depth=4,
-        min_child_weight=200,
+        num_estimators=20,
+        max_depth=10,
+        min_child_weight=10,
         reg_alpha=0.3,
         reg_lambda=10,
         reg_gamma=10,
     )
-    model.fit(df[features], y, features)
+    model.fit(train[features], y, features)
+    # print([row for i, row in test[features].iterrows()])
+    predictions = [model.predict(row) for _, row in tqdm(test[features].iterrows())]
+    pred = pd.Series(predictions)
+    counts = pred.value_counts()
+
+    print(counts)
+    print(f"Accuracy: {accuracy(test["Transported"], predictions)}")
+    print(f"Precision: {precision(test["Transported"], predictions)}")
 
 
 if __name__ == "__main__":

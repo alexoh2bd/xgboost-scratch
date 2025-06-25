@@ -13,4 +13,6 @@ scikit-learn
 requests
 xgboost
 matplotlib
+polars
+tqdm
 -e .

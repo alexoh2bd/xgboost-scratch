@@ -12,72 +12,95 @@ I built all tree construction components manually, including the calculation of 
 
 I trained and evaluated the custom model on Kaggle’s Spaceship Titanic dataset to validate its performance against a real-world classification problem. This project deepened my understanding of gradient boosting mechanics, optimization strategies, and the inner workings of scalable ML systems.
 
-## Setup
+## Project Overview
 
-Set up Python
+This project provides a comprehensive implementation of gradient-boosted trees from scratch, including:
 
+- Gradient Boosted Decision Trees (GBDT) from scratch
+- XGBoost regularization techniques (L1, L2, and Gamma)
+- Handling of missing values
+- Feature importance calculation
+- Tree visualization capabilities
+- Proper handling of categorical variables
+- Advanced splitting criteria optimization
+
+## Why Implement Gradient Boosting from Scratch?
+
+My ultimate *goal* is to become a data scientist and push the frontier of AI research. Tree-based models like XGBoost are bread and butter for a typical data science role with applications in any industry. By researching the statistics behind the model and translating the numbers to code, I deepen my understanding of the model, and enhance my ability to wield it in future situations.
+
+1. **Deep Understanding**: Gain intimate knowledge of how gradient boosting works
+2. **Learning Benefits**:
+   - Understand tree-based algorithms and their optimizations
+   - Learn about gradient boosting and its mathematical foundations
+   - Explore regularization techniques and their impact
+   - Gain insights into handling missing values
+   - Understand feature importance calculations
+   - Learn about efficient tree construction algorithms
+3. **Customization**: Ability to modify and experiment with different aspects of the algorithm
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.8+
+- Required packages:
+  - pandas
+  - numpy
+  - tqdm
+  - typer
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/alexoh2bd/xgboost-scratch.git
+cd xgboost-scratch
+```
+
+2. Create and activate virtual environment:
+```bash
 python -m venv venv
-source ./venv/bin/activate
-pip install -r requirements
-
-
-
-Download mock [Spaceship Titanic Data](https://www.kaggle.com/competitions/spaceship-titanic/data), and move train.csv and test.csv files to "Trees/data/raw/" directory:
-
-run dataset.py in terminal to process data
-then run xgboost.py to build xgboost model
-
-
-## Project Organization
-
-```
-├── LICENSE            <- Open-source license if one is chosen
-├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- A default mkdocs project; see www.mkdocs.org for details
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-│
-├── pyproject.toml     <- Project configuration file with package metadata for 
-│                         TreesFromScratch and configuration for tools like black
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-├── setup.cfg          <- Configuration file for flake8
-│
-└── TreesFromScratch   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes TreesFromScratch a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
-    │   └── train.py            <- Code to train models
-    │
-    └── plots.py                <- Code to create visualizations
+source ./venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
---------
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
+### Running the Model
+
+1. Download the Spaceship Titanic dataset from Kaggle (https://www.kaggle.com/competitions/spaceship-titanic/data)
+2. Place the `train.csv` and `test.csv` files in the `data/raw/` directory
+3. Run the preprocessing script:
+```bash
+python TreesFromScratch/dataset.py
+```
+4. Train and test the model:
+```bash
+python TreesFromScratch/modeling/xgb.py
+```
+
+
+## Model Parameters
+
+Key parameters that can be tuned:
+- `num_estimators`: Number of trees in the ensemble
+- `max_depth`: Maximum depth of each tree
+- `learning_rate`: Step size shrinkage used to prevent overfitting
+- `min_child_weight`: Minimum sum of instance weight needed in a child
+- `reg_alpha`: L1 regularization term
+- `reg_lambda`: L2 regularization term
+- `reg_gamma`: Minimum loss reduction required to make a further partition
+
+
+## Learning Outcomes
+
+By implementing this:
+1. Understand the mathematical foundations of gradient boosting
+2. Learn about tree construction algorithms and optimizations
+3. Gain insights into regularization techniques
+4. Understand how to handle missing values in tree-based models
+5. Learn about feature importance calculation
+6. Gain experience with model evaluation and validation
+7. Understand the trade-offs
