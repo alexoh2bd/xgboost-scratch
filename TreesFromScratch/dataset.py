@@ -3,9 +3,8 @@ import requests
 import typer
 import pandas as pd
 from loguru import logger
-from tqdm import tqdm
-import os
-from dotenv import load_dotenv
+
+from sklearn.model_selection import train_test_split
 
 from TreesFromScratch.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 
@@ -24,7 +23,7 @@ def binaryEncode(df, feature: str) -> None:
     df[feature] = df[feature].apply(lambda x: 1 if x == True else 0)
 
 
-def processSpaceshipData(input_path: str, output_path: str):
+def processSpaceshipData(input_path: str, train_path: str, test_path: str):
     normFeatures = ["Age", "RoomService", "FoodCourt", "ShoppingMall", "Spa", "VRDeck"]
     binaryFeats = ["CryoSleep", "VIP"]
     transp = "Transported"
@@ -37,8 +36,16 @@ def processSpaceshipData(input_path: str, output_path: str):
     if transp in df:
         binaryEncode(df, transp)
 
+    categorical_features = ["HomePlanet", "Destination"]
+    df = pd.get_dummies(df, columns=categorical_features)
+
     df.drop(columns=["Name", "PassengerId", "Cabin"], inplace=True)
-    df.to_csv(output_path, index=False)
+
+    traindf = df.sample(frac=0.8, random_state=42)
+    testdf = df.drop(traindf.index)
+
+    traindf.to_csv(train_path, index=False)
+    testdf.to_csv(test_path, index=False)
 
 
 @app.command()
@@ -49,8 +56,8 @@ def main(
     output_test_path: Path = PROCESSED_DATA_DIR / "test.csv",
 ):
     logger.info("Processing train.csv dataset...")
-    # processSpaceshipData(input_train_path, output_train_path)
-    processSpaceshipData(input_test_path, output_test_path)
+    processSpaceshipData(input_train_path, output_train_path, output_test_path)
+    # processSpaceshipData(input_test_path, output_test_path)
     logger.success("Processing dataset complete.")
 
 
